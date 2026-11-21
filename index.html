@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hiroren — 3D Artist for Roblox</title>
+<meta name="description" content="Hiroren — Roblox 3D modeler. UGC, low poly and mid poly game assets.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script type="importmap">
+  { "imports": {
+      "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/" } }
+</script>
+<style>
+  :root {
+    --bg: #141518;
+    --panel: #212226;
+    --panel-2: #2b2c31;
+    --line: #36373d;
+    --text: #ececee;
+    --muted: #9a9ba3;
+    --accent: #a66cff;   /* main purple */
+    --x: #ff4d5e; --y: #8bdc3a; --z: #4f8dff; /* axis colours */
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --sans: "Space Grotesk", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; overflow-x: hidden; padding-bottom: 34px; }
+  a { color: inherit; }
+  img { display: block; max-width: 100%; }
+  .mono { font-family: var(--mono); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  ::selection { background: var(--accent); color: #111; }
+
+  /* ---------- boot screen ---------- */
+  #boot { position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; gap: 18px; justify-items: center;
+    background: var(--bg); font-family: var(--mono); font-size: 13px; color: var(--muted);
+    animation: bootOut .5s 1.3s forwards; }
+  #boot .cube { width: 40px; height: 40px; border: 2px solid var(--accent); animation: spin 1.2s linear infinite; }
+  #boot .bar { width: 220px; height: 3px; background: var(--line); overflow: hidden; }
+  #boot .bar i { display: block; height: 100%; background: var(--accent); animation: load 1.2s ease-out forwards; }
+  @keyframes spin { to { transform: rotate(405deg); } }
+  @keyframes load { from { width: 0; } to { width: 100%; } }
+  @keyframes bootOut { to { opacity: 0; visibility: hidden; } }
+
+  /* ---------- Blender-style 3D cursor ---------- */
+  #cursor3d { position: fixed; top: 0; left: 0; width: 30px; height: 30px; margin: -15px 0 0 -15px; z-index: 90; pointer-events: none;
+    border-radius: 50%; background: conic-gradient(var(--x) 0 25%, #fff 0 50%, var(--x) 0 75%, #fff 0);
+    -webkit-mask: radial-gradient(circle, transparent 11px, #000 12px); mask: radial-gradient(circle, transparent 11px, #000 12px);
+    transition: width .2s, height .2s, margin .2s; display: none; }
+  #cross3d { position: fixed; top: 0; left: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; z-index: 90; pointer-events: none; display: none;
+    background: linear-gradient(#000, #000) center/1px 100% no-repeat, linear-gradient(#000, #000) center/100% 1px no-repeat;
+    -webkit-mask: radial-gradient(circle, transparent 7px, #000 8px); mask: radial-gradient(circle, transparent 7px, #000 8px); opacity: .7; }
+  body.hot #cursor3d { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+  @media (pointer: fine) and (prefers-reduced-motion: no-preference) { #cursor3d, #cross3d { display: block; } }
+
+  /* ---------- top bar ---------- */
+  .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 24px;
+    padding: 10px 24px; background: rgba(20,21,24,.85); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); font-size: 13px; }
+  .logo { font-family: var(--mono); font-weight: 600; display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .logo-cube { width: 16px; height: 16px; border: 2px solid var(--accent); transform: rotate(45deg); transition: transform .6s; }
+  .logo:hover .logo-cube { transform: rotate(225deg); }
+  .menus { display: flex; gap: 2px; font-family: var(--mono); color: var(--muted); }
+  .menus span { padding: 4px 8px; border-radius: 4px; }
+  .topbar nav { display: flex; gap: 4px; margin-left: auto; }
+  .topbar nav a { padding: 6px 12px; border-radius: 6px; text-decoration: none; color: var(--muted); font-family: var(--mono); }
+  .topbar nav a:hover { background: var(--panel-2); color: var(--text); }
+  .topbar nav a.cta { background: var(--accent); color: #111; font-weight: 600; box-shadow: 0 0 24px rgba(166,108,255,.35); }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; min-height: calc(100vh - 49px); display: grid; grid-template-columns: 1fr 1.05fr; gap: 40px; align-items: center;
+    padding: 48px 5vw; overflow: hidden; background: radial-gradient(ellipse at 75% 45%, #2e2f35 0%, var(--bg) 60%); }
+  .grid-floor { position: absolute; inset: auto -50% -10% -50%; height: 60%; pointer-events: none;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 60px 60px; transform: perspective(500px) rotateX(65deg); transform-origin: top;
+    mask-image: linear-gradient(to bottom, transparent, #000 30%, transparent 95%); opacity: .5; animation: floor 6s linear infinite; }
+  @keyframes floor { to { background-position: 0 60px; } }
+  .hero-copy { position: relative; z-index: 2; }
+  .tag { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--accent);
+    border: 1px solid var(--accent); padding: 4px 10px; border-radius: 99px; margin-bottom: 24px; background: rgba(166,108,255,.08); }
+  .tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.6s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  h1 { font-size: clamp(52px, 8.5vw, 120px); line-height: .92; letter-spacing: -.04em; }
+  h1 .outline { color: transparent; -webkit-text-stroke: 1.5px var(--text); position: relative; display: inline-block; white-space: nowrap; }
+  h1 .outline::after { content: attr(data-text); position: absolute; left: 0; top: 0; color: var(--accent); -webkit-text-stroke: 0;
+    clip-path: inset(0 100% 0 0); animation: fillIn 1.4s 1.5s cubic-bezier(.7,0,.2,1) forwards; }
+  @keyframes fillIn { to { clip-path: inset(0 0 0 0); } }
+  .hero p.lead { color: var(--muted); max-width: 500px; margin: 24px 0 32px; font-size: 18px; }
+  .btns { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { display: inline-block; padding: 12px 22px; border-radius: 8px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); background: var(--panel); transition: border-color .2s, transform .2s; }
+  .btn:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .btn.primary { background: var(--accent); color: #111; border-color: var(--accent); box-shadow: 0 8px 30px rgba(166,108,255,.3); }
+
+  /* viewport panel */
+  .viewport { position: relative; z-index: 2; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: rgba(33,34,38,.55);
+    backdrop-filter: blur(4px); box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .vp-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; }
+  .vp-bar .mode { color: var(--muted); margin-right: auto; padding-left: 4px; }
+  .seg { display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { all: unset; cursor: pointer; padding: 4px 10px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button:hover { color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #111; font-weight: 600; }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .vp-body { position: relative; aspect-ratio: 1 / .9; }
+  .vp-body canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: pan-y; }
+  .vp-body canvas:active { cursor: grabbing; }
+  .hud { position: absolute; font-family: var(--mono); font-size: 11px; color: var(--muted); pointer-events: none; }
+  .hud.tl { top: 12px; left: 14px; }
+  .hud.bl { bottom: 12px; left: 14px; }
+  .hud.br { bottom: 12px; right: 14px; text-align: right; }
+  .gizmo { position: absolute; top: 12px; right: 12px; width: 58px; height: 58px; pointer-events: none; }
+  .vp-fail { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--mono); color: var(--muted); font-size: 13px; }
+
+  /* marquee */
+  .marquee { overflow: hidden; border-block: 1px solid var(--line); background: var(--panel); padding: 14px 0; }
+  .marquee div { display: flex; width: max-content; animation: slide 28s linear infinite; font-family: var(--mono); font-size: 14px; letter-spacing: .15em; color: var(--muted); }
+  .marquee span { padding: 0 28px; white-space: nowrap; }
+  .marquee span b { color: var(--accent); font-weight: 400; margin-left: 56px; }
+  @keyframes slide { to { transform: translateX(-50%); } }
+
+  /* ---------- sections ---------- */
+  section { padding: 110px 5vw; }
+  .sec-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 48px; flex-wrap: wrap; }
+  .sec-head .idx { font-family: var(--mono); color: var(--accent); font-size: 14px; }
+  h2 { font-size: clamp(34px, 5.5vw, 64px); letter-spacing: -.03em; line-height: 1; }
+  .sec-head .hint { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .about { display: grid; grid-template-columns: 1.2fr 1fr; gap: 48px; align-items: start; }
+  .about p { font-size: 22px; color: var(--muted); line-height: 1.5; }
+  .about p strong { color: var(--text); font-weight: 500; }
+  .props { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-family: var(--mono); font-size: 13px; }
+  .props-h { padding: 10px 16px; background: var(--panel-2); border-bottom: 1px solid var(--line); color: var(--muted); }
+  .prop { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .prop:last-child { border-bottom: 0; }
+  .prop span:first-child { color: var(--muted); }
+  .prop b { color: var(--text); font-weight: 600; }
+  /* slider field, like a Blender number field */
+  .field { flex: 0 0 55%; position: relative; background: var(--bg); border-radius: 4px; padding: 3px 10px; text-align: center; overflow: hidden; }
+  .field::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v); background: rgba(79,141,255,.35); transition: width 1.4s cubic-bezier(.2,.8,.2,1); }
+  .reveal:not(.in) .field::before { width: 0; }
+  .field b { position: relative; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  .chip { font-family: var(--mono); font-size: 12px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; }
+  .chip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 8px; }
+
+  /* works */
+  .works { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; }
+  .card { position: relative; grid-column: span 2; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .card.wide { grid-column: span 3; }
+  .card.full { grid-column: 1 / -1; }
+  .works .card.in { transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition: opacity .7s, transform .25s ease-out, border-color .2s, box-shadow .2s; }
+  .card:hover { border-color: var(--accent); box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 0 1px var(--accent); }
+  .card::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .2s;
+    background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.12), transparent 45%); }
+  .card:hover::after { opacity: 1; }
+  .card button { all: unset; display: block; width: 100%; cursor: zoom-in; position: relative; }
+  .card button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .card .shot { position: relative; aspect-ratio: 16/10; overflow: hidden; background: #0d0d0f; }
+  .card.full .shot { aspect-ratio: 21/8; }
+  .card .shot img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s, filter 1.6s cubic-bezier(.3,.7,.2,1);
+    filter: blur(16px) saturate(.2) brightness(.6); }
+  .card.in .shot img { filter: none; }
+  .card:hover .shot img { transform: scale(1.06); }
+  /* render noise that clears as samples accumulate */
+  .noise { position: absolute; inset: 0; opacity: .85; mix-blend-mode: overlay; transition: opacity 1.6s cubic-bezier(.3,.7,.2,1);
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .card.in .noise { opacity: 0; }
+  .samples { position: absolute; top: 10px; left: 10px; font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.7); padding: 3px 8px; border-radius: 4px; transition: opacity .4s; }
+  .samples.done { opacity: 0; }
+  .card .shot .br-l, .card .shot .br-r { position: absolute; width: 18px; height: 18px; border: 2px solid var(--accent); opacity: 0; transition: opacity .2s; bottom: 10px; }
+  .card .shot .br-l { left: 10px; border-right: 0; border-top: 0; }
+  .card .shot .br-r { right: 10px; border-left: 0; border-top: 0; }
+  .card:hover .br-l, .card:hover .br-r { opacity: 1; }
+  .card .count { position: absolute; top: 10px; right: 10px; font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.7); padding: 3px 8px; border-radius: 4px; }
+  .card .meta { padding: 16px 18px 20px; }
+  .card .meta .id { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .card h3 { font-size: 21px; margin: 4px 0 6px; }
+  .card p { color: var(--muted); font-size: 14px; }
+
+
+  /* contact */
+  .contact { text-align: center; border-top: 1px solid var(--line); position: relative; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 110%, rgba(166,108,255,.22), transparent 60%); }
+  .contact h2 { font-size: clamp(44px, 8vw, 110px); }
+  .contact p { color: var(--muted); max-width: 560px; margin: 20px auto 36px; }
+  .links { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+  .links a { display: flex; align-items: center; gap: 10px; padding: 14px 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); text-decoration: none; font-weight: 500; transition: border-color .2s, transform .2s; }
+  .links a:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .links svg { width: 20px; height: 20px; fill: currentColor; }
+  footer { padding: 24px 5vw; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
+
+  /* timeline bar (scroll = frames) */
+  .timeline { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: 34px; display: flex; align-items: center; gap: 14px; padding: 0 14px;
+    background: var(--panel); border-top: 1px solid var(--line); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .track { position: relative; flex: 1; height: 18px;
+    background: repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 10%), repeating-linear-gradient(90deg, #2a2b30 0 1px, transparent 1px 2%); }
+  .playhead { position: absolute; top: -4px; bottom: -4px; left: 0; width: 2px; background: var(--z); }
+  .playhead span { position: absolute; top: -2px; left: 50%; transform: translateX(-50%); background: var(--z); color: #fff; padding: 0 6px; border-radius: 3px; font-size: 10px; line-height: 14px; }
+  .key { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #e6c84c; transform: rotate(45deg); }
+
+  /* lightbox */
+  dialog { margin: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); max-width: min(1100px, 94vw); padding: 0; }
+  dialog[open] { animation: pop .25s ease-out; }
+  @keyframes pop { from { transform: scale(.96); opacity: 0; } }
+  dialog::backdrop { background: rgba(0,0,0,.88); backdrop-filter: blur(4px); }
+  dialog img { max-height: 78vh; width: 100%; object-fit: contain; background: #0d0d0f; }
+  .lb-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; font-family: var(--mono); font-size: 13px; }
+  .lb-bar span { margin-right: auto; }
+  .lb-bar button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-family: var(--mono); }
+  .lb-bar button:hover { border-color: var(--accent); }
+
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s, transform .7s; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal, .card .shot img { opacity: 1; transform: none; filter: none; }
+    .noise, #boot { display: none; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    h1 .outline::after { clip-path: none; }
+  }
+  @media (max-width: 900px) {
+    .hero, .about { grid-template-columns: 1fr; }
+    .works { grid-template-columns: 1fr; }
+    .card, .card.wide, .card.full { grid-column: auto; }
+    .card.full .shot { aspect-ratio: 16/10; }
+    .topbar nav a:not(.cta), .menus { display: none; }
+    .timeline .tl-label { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="boot" aria-hidden="true"><div class="cube"></div><div>Loading hiroren.blend …</div><div class="bar"><i></i></div></div>
+<div id="cursor3d" aria-hidden="true"></div><div id="cross3d" aria-hidden="true"></div>
+
+<header class="topbar">
+  <a href="#top" class="logo"><span class="logo-cube"></span>hiroren.blend</a>
+  <div class="menus" aria-hidden="true"><span>File</span><span>Edit</span><span>Render</span><span>Window</span></div>
+  <nav>
+    <a href="#about">About</a>
+    <a href="#work">Work</a>
+    <a href="#contact" class="cta">Commission</a>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="grid-floor"></div>
+    <div class="hero-copy">
+      <span class="tag">Open for commissions</span>
+      <h1>Hiroren<br><span class="outline" data-text="3D Artist">3D Artist</span></h1>
+      <p class="lead">Roblox 3D modeler making UGC, low poly and mid poly game assets. Thousands of assets shipped to games and groups since 2022.</p>
+      <div class="btns">
+        <a href="#work" class="btn primary">View renders</a>
+        <a href="https://www.artstation.com/hiroren" class="btn" target="_blank" rel="noopener">ArtStation ↗</a>
+      </div>
+    </div>
+
+    <div class="viewport" id="vp">
+      <div class="vp-bar">
+        <span class="mode">◆ Object Mode</span>
+        <div class="seg" role="group" aria-label="Mesh">
+          <button data-geo="knot" aria-pressed="true">Knot</button><button data-geo="gem" aria-pressed="false">Gem</button><button data-geo="ico" aria-pressed="false">Ico</button>
+        </div>
+        <div class="seg" role="group" aria-label="Viewport shading">
+          <button data-shade="wire" aria-pressed="false">Wire</button><button data-shade="solid" aria-pressed="false">Solid</button><button data-shade="render" aria-pressed="true">Render</button>
+        </div>
+      </div>
+      <div class="vp-body">
+        <canvas aria-label="Interactive 3D viewport. Drag to orbit." role="img"></canvas>
+        <div class="hud tl">User Perspective<br>(1) Collection | Hiroren</div>
+        <svg class="gizmo" viewBox="-32 -32 64 64" aria-hidden="true">
+          <line x1="0" y1="0" x2="24" y2="8" stroke="var(--x)" stroke-width="2"/><circle cx="24" cy="8" r="7" fill="var(--x)"/>
+          <line x1="0" y1="0" x2="-6" y2="-24" stroke="var(--z)" stroke-width="2"/><circle cx="-6" cy="-24" r="7" fill="var(--z)"/>
+          <line x1="0" y1="0" x2="-20" y2="14" stroke="var(--y)" stroke-width="2"/><circle cx="-20" cy="14" r="7" fill="var(--y)"/>
+          <text x="24" y="11" font-size="8" text-anchor="middle" fill="#111" font-family="monospace" font-weight="bold">X</text>
+          <text x="-6" y="-21" font-size="8" text-anchor="middle" fill="#111" font-family="monospace" font-weight="bold">Z</text>
+          <text x="-20" y="17" font-size="8" text-anchor="middle" fill="#111" font-family="monospace" font-weight="bold">Y</text>
+        </svg>
+        <div class="hud bl">drag to orbit</div>
+        <div class="hud br" id="stats"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="marquee" aria-hidden="true"><div>
+    <span>UGC<b>✦</b></span><span>LOW POLY<b>✦</b></span><span>MID POLY<b>✦</b></span><span>RIG-READY<b>✦</b></span><span>TEXTURED<b>✦</b></span><span>GAME-READY<b>✦</b></span><span>MADE IN BLENDER<b>✦</b></span>
+    <span>UGC<b>✦</b></span><span>LOW POLY<b>✦</b></span><span>MID POLY<b>✦</b></span><span>RIG-READY<b>✦</b></span><span>TEXTURED<b>✦</b></span><span>GAME-READY<b>✦</b></span><span>MADE IN BLENDER<b>✦</b></span>
+  </div></div>
+
+  <section id="about">
+    <div class="sec-head reveal"><span class="idx">01 /</span><h2 data-scramble>About</h2></div>
+    <div class="about">
+      <p class="reveal">I started making 3D designs in <strong>late 2022</strong> and have been modeling for Roblox ever since. I specialize in <strong>UGC items, low poly and mid poly assets</strong>, and I've contributed <strong>thousands of game assets</strong> to countless games and groups. Everything is built in Blender and delivered ready to drop into Studio.</p>
+      <div class="reveal">
+        <div class="props">
+          <div class="props-h">▾ Object Properties</div>
+          <div class="prop"><span>Experience</span><span class="field" style="--v:80%"><b>4+ years</b></span></div>
+          <div class="prop"><span>Assets shipped</span><span class="field" style="--v:100%"><b>1,000s</b></span></div>
+          <div class="prop"><span>Started</span><b>Late 2022</b></div>
+          <div class="prop"><span>Software</span><b>Blender</b></div>
+          <div class="prop"><span>Platform</span><b>Roblox</b></div>
+        </div>
+        <div class="chips">
+          <span class="chip"><i style="background:var(--x)"></i>UGC</span>
+          <span class="chip"><i style="background:var(--y)"></i>Low Poly</span>
+          <span class="chip"><i style="background:var(--z)"></i>Mid Poly</span>
+          <span class="chip"><i style="background:var(--accent)"></i>Rig-ready</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="work">
+    <div class="sec-head reveal"><span class="idx">02 /</span><h2 data-scramble>Selected Renders</h2><span class="hint">click to enlarge</span></div>
+    <div class="works" id="works"></div>
+  </section>
+
+
+  <section id="contact" class="contact">
+    <div class="reveal">
+      <div class="mono" style="color:var(--accent)">03 / Contact</div>
+      <h2 data-scramble>Let's build something.</h2>
+      <p>Not all of my work fits here. See more on ArtStation, or reach out on any of these for bookings and commissions. Discord: <span class="mono">@hiroren</span></p>
+      <div class="links">
+        <a href="https://discord.com/users/709232390308102175" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.4 18.4 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2a19.8 19.8 0 0 0 6-3c.5-5.2-.9-9.7-3.6-13.7zM8 15.3c-1.2 0-2.2-1.1-2.2-2.4S6.8 10.5 8 10.5s2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg>
+          Discord</a>
+        <a href="https://www.artstation.com/hiroren" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24"><path d="M0 17.7l2 3.5a2.4 2.4 0 0 0 2.1 1.3h13.4l-2.8-4.8H0zm24 .1c0-.5-.1-.9-.4-1.3L15.8 3a2.4 2.4 0 0 0-2.1-1.3H9.5L21.6 22.6l1.9-3.3c.4-.6.5-.9.5-1.5zm-11.2-2.7L7.4 5.7l-5.4 9.4h10.8z"/></svg>
+          ArtStation</a>
+        <a href="https://www.roblox.com/users/889350455/profile" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24"><path d="M5.2 0 0 18.8 18.8 24 24 5.2 5.2 0zm8.4 15.6-5.2-1.4 1.4-5.2 5.2 1.4-1.4 5.2z"/></svg>
+          Roblox</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><span>© Hiroren</span><span>Rendered in Blender · Shipped to Roblox</span></footer>
+
+<div class="timeline" aria-hidden="true">
+  <span>▶</span><span class="tl-label">Timeline</span>
+  <div class="track">
+    <i class="key" style="left:0%"></i><i class="key" style="left:20%"></i><i class="key" style="left:45%"></i><i class="key" style="left:75%"></i><i class="key" style="left:100%"></i>
+    <div class="playhead" id="playhead"><span id="frame">1</span></div>
+  </div>
+  <span class="tl-label">End 250</span>
+</div>
+
+<dialog id="lb">
+  <img id="lb-img" alt="">
+  <div class="lb-bar"><span id="lb-cap"></span><button id="lb-prev" aria-label="Previous image">←</button><button id="lb-next" aria-label="Next image">→</button><button id="lb-close" aria-label="Close">Esc</button></div>
+</dialog>
+
+<script>
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---- portfolio data: edit here to add/remove work ----
+const WORKS = [
+  { title: "Bass Boat", desc: "Detailed boat with full interior, designed fully in Blender to the customer's request.", imgs: ["assets/work07.jpg", "assets/work03.jpg"], size: "wide" },
+  { title: "Rail Gun", desc: "Made for a Tower Defense game, built to be rigged for further use.", imgs: ["assets/work06.jpg"], size: "wide" },
+  { title: "Chain UGC", desc: "Commission request.", imgs: ["assets/work02.jpg"] },
+  { title: "Weapons Commissions", desc: "Firearms and melee sets, textured and game-ready.", imgs: ["assets/work08.jpg", "assets/work04.jpg"] },
+  { title: "Donation Booths", desc: "Low poly booths for a donation game. 20+ sets.", imgs: ["assets/work05.jpg"] },
+  { title: "Food Props", desc: "Food sets for games with cooking or kitchen features. 20+ sets.", imgs: ["assets/work01.jpg"], size: "full" },
+];
+
+const grid = document.getElementById("works");
+WORKS.forEach((w, i) => {
+  const el = document.createElement("article");
+  el.className = "card reveal " + (w.size || "");
+  el.innerHTML = `
+    <button aria-label="Open ${w.title} renders">
+      <div class="shot"><img src="${w.imgs[0]}" alt="${w.title} render" loading="lazy"><div class="noise"></div><i class="br-l"></i><i class="br-r"></i></div>
+      <span class="samples">Sample 1/128</span>
+      ${w.imgs.length > 1 ? `<span class="count">1/${w.imgs.length}</span>` : ""}
+    </button>
+    <div class="meta"><div class="id">OBJ_${String(i + 1).padStart(2, "0")}</div><h3>${w.title}</h3><p>${w.desc}</p></div>`;
+  el.querySelector("button").onclick = () => openLb(i, 0);
+  // tilt + glare follow the mouse
+  el.addEventListener("pointermove", e => {
+    if (still || e.pointerType !== "mouse") return;
+    const r = el.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    el.style.setProperty("--ry", (px - .5) * 8 + "deg"); el.style.setProperty("--rx", (.5 - py) * 8 + "deg");
+    el.style.setProperty("--mx", px * 100 + "%"); el.style.setProperty("--my", py * 100 + "%");
+  });
+  el.addEventListener("pointerleave", () => { el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); });
+  grid.appendChild(el);
+});
+
+// ---- render-sample counter (Cycles-style) ----
+function sample(card) {
+  const s = card.querySelector(".samples"); if (!s) return;
+  const t0 = performance.now();
+  (function tick(now) {
+    const k = Math.min(1, (now - t0) / 1500);
+    s.textContent = `Sample ${Math.max(1, Math.round(128 * k * k))}/128`;
+    if (k < 1) requestAnimationFrame(tick); else setTimeout(() => s.classList.add("done"), 400);
+  })(t0);
+}
+
+// ---- heading scramble ----
+const GLYPHS = "!<>-_\\/[]{}=+*^?#01";
+function scramble(el) {
+  const final = el.textContent, t0 = performance.now();
+  (function tick(now) {
+    const k = (now - t0) / 700;
+    el.textContent = [...final].map((c, i) => c === " " || i / final.length < k ? c : GLYPHS[Math.random() * GLYPHS.length | 0]).join("");
+    if (k < 1) requestAnimationFrame(tick); else el.textContent = final;
+  })(t0);
+}
+
+// ---- reveal on scroll ----
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add("in"); io.unobserve(e.target);
+  if (still) return;
+  sample(e.target);
+  e.target.querySelectorAll("[data-scramble]").forEach(scramble);
+}), { threshold: .15 });
+document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+
+// ---- lightbox ----
+const lb = document.getElementById("lb"), lbImg = document.getElementById("lb-img"), lbCap = document.getElementById("lb-cap");
+const flat = WORKS.flatMap((w, i) => w.imgs.map((src, j) => ({ src, i, j })));
+let cur = 0;
+function show(k) {
+  cur = (k + flat.length) % flat.length;
+  const f = flat[cur], w = WORKS[f.i];
+  lbImg.src = f.src; lbImg.alt = w.title;
+  lbCap.textContent = `${w.title}  ${f.j + 1}/${w.imgs.length}`;
+}
+function openLb(i, j) { show(flat.findIndex(f => f.i === i && f.j === j)); lb.showModal(); }
+document.getElementById("lb-prev").onclick = () => show(cur - 1);
+document.getElementById("lb-next").onclick = () => show(cur + 1);
+document.getElementById("lb-close").onclick = () => lb.close();
+lb.addEventListener("click", e => { if (e.target === lb) lb.close(); });
+lb.addEventListener("keydown", e => { if (e.key === "ArrowLeft") show(cur - 1); if (e.key === "ArrowRight") show(cur + 1); });
+
+// ---- timeline: scroll position = frame ----
+const ph = document.getElementById("playhead"), fr = document.getElementById("frame");
+function onScroll() {
+  const p = scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight);
+  ph.style.left = p * 100 + "%"; fr.textContent = Math.round(p * 249) + 1;
+}
+addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+// ---- 3D cursor (lags behind the mouse like it's being placed) ----
+const c1 = document.getElementById("cursor3d"), c2 = document.getElementById("cross3d");
+let mx = -100, my = -100, cx = -100, cy = -100;
+addEventListener("pointermove", e => { mx = e.clientX; my = e.clientY;
+  document.body.classList.toggle("hot", !!e.target.closest("a,button")); });
+if (!still && matchMedia("(pointer: fine)").matches) (function loop() {
+  cx += (mx - cx) * .22; cy += (my - cy) * .22;
+  c1.style.transform = c2.style.transform = `translate(${cx}px,${cy}px)`;
+  requestAnimationFrame(loop);
+})();
+</script>
+
+<script type="module">
+// ---- hero: real 3D viewport ----
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const body = document.querySelector(".vp-body"), canvas = body.querySelector("canvas"), stats = document.getElementById("stats");
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
+const camera = new THREE.PerspectiveCamera(38, 1, .1, 100);
+camera.position.set(3.6, 2.4, 4.2);
+
+const controls = new OrbitControls(camera, canvas);
+Object.assign(controls, { enableDamping: true, enableZoom: false, enablePan: false, autoRotate: !still, autoRotateSpeed: 1.6 });
+
+// floor grid with Blender's red X / green Y axis lines
+const grid = new THREE.GridHelper(12, 24, 0x4a4b52, 0x2c2d32); grid.position.y = -1.4; scene.add(grid);
+const axis = (a, b, col) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: col })); l.position.y = -1.399; scene.add(l); };
+axis(new THREE.Vector3(-6, 0, 0), new THREE.Vector3(6, 0, 0), 0xff4d5e);
+axis(new THREE.Vector3(0, 0, -6), new THREE.Vector3(0, 0, 6), 0x8bdc3a);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x333333, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 5, 2); scene.add(sun);
+
+const flat = g => (g.computeVertexNormals(), g); // non-indexed -> faceted low-poly look
+const GEOS = {
+  knot: new THREE.TorusKnotGeometry(.85, .3, 128, 16),
+  gem: flat(new THREE.OctahedronGeometry(1.25, 0)).scale(1, 1.3, 1),
+  ico: flat(new THREE.IcosahedronGeometry(1.2, 1)),
+};
+const MATS = {
+  wire: new THREE.MeshBasicMaterial({ color: 0xa66cff, wireframe: true }),
+  solid: new THREE.MeshStandardMaterial({ color: 0xb9b9be, roughness: .75, metalness: 0 }),
+  render: new THREE.MeshPhysicalMaterial({ color: 0xa66cff, metalness: .85, roughness: .2, clearcoat: 1, clearcoatRoughness: .1 }),
+};
+const mesh = new THREE.Mesh(GEOS.knot, MATS.render); scene.add(mesh);
+const edges = new THREE.LineSegments(new THREE.WireframeGeometry(GEOS.knot), new THREE.LineBasicMaterial({ color: 0xa66cff, transparent: true, opacity: .25 }));
+mesh.add(edges);
+
+let geo = "knot", shade = "render";
+function apply() {
+  mesh.geometry = GEOS[geo];
+  edges.geometry.dispose(); edges.geometry = new THREE.WireframeGeometry(GEOS[geo]);
+  edges.visible = shade === "solid";
+  mesh.material = MATS[shade];
+  grid.visible = shade !== "render";
+  const g = GEOS[geo], tris = (g.index ? g.index.count : g.attributes.position.count) / 3;
+  stats.textContent = `Tris ${tris.toLocaleString()} · ${shade[0].toUpperCase() + shade.slice(1)}`;
+}
+document.querySelectorAll(".vp-bar button").forEach(b => b.addEventListener("click", () => {
+  const key = b.dataset.geo ? "geo" : "shade";
+  b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  key === "geo" ? geo = b.dataset.geo : shade = b.dataset.shade;
+  apply();
+}));
+apply();
+
+new ResizeObserver(() => {
+  const w = body.clientWidth, h = body.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}).observe(body);
+
+// only render while the viewport is on screen
+const clock = new THREE.Clock();
+const loop = () => { const t = clock.getElapsedTime(); if (!still) mesh.position.y = Math.sin(t * 1.2) * .08; controls.update(); renderer.render(scene, camera); };
+new IntersectionObserver(([e]) => renderer.setAnimationLoop(e.isIntersecting ? loop : null)).observe(body);
+</script>
+<script>
+// if the 3D module can't load (offline / no WebGL), say so instead of showing an empty box
+addEventListener("load", () => setTimeout(() => {
+  if (!document.getElementById("stats").textContent) document.querySelector(".vp-body").insertAdjacentHTML("beforeend", '<div class="vp-fail">Viewport offline — needs internet + WebGL</div>');
+}, 1500));
+</script>
+</body>
+</html>
