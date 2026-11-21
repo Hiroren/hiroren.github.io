@@ -181,6 +181,9 @@
   .card .meta .id { font-family: var(--mono); font-size: 11px; color: var(--accent); }
   .card h3 { font-size: 21px; margin: 4px 0 6px; }
   .card p { color: var(--muted); font-size: 14px; }
+  .more { margin-top: 56px; text-align: center; font-size: clamp(28px, 4vw, 48px); font-weight: 700; letter-spacing: -.03em; color: var(--accent); }
+  .more a { display: block; margin-top: 8px; font-family: var(--mono); font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+  .more a:hover { color: var(--text); }
 
 
   /* contact */
@@ -319,6 +322,7 @@
   <section id="work">
     <div class="sec-head reveal"><span class="idx">02 /</span><h2 data-scramble>Selected Renders</h2><span class="hint">click to enlarge</span></div>
     <div class="works" id="works"></div>
+    <p class="more reveal">…and much more <a href="https://www.artstation.com/hiroren" target="_blank" rel="noopener">see the full gallery on ArtStation ↗</a></p>
   </section>
 
 
@@ -360,6 +364,13 @@
 
 <script>
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+// if the local assets/ folder is missing (only index.html was copied or uploaded), load the same render from the Carrd site instead
+addEventListener("error", e => {
+  const img = e.target;
+  if (img.tagName !== "IMG" || img.dataset.fallback || !/work0\d\.jpg$/.test(img.src)) return;
+  img.dataset.fallback = 1;
+  img.src = "https://hirorenportfolio.carrd.co/assets/images/" + img.src.split("/").pop().replace("work", "image");
+}, true);
 
 // ---- portfolio data: edit here to add/remove work ----
 const WORKS = [
